@@ -1,115 +1,119 @@
-import Image from "next/image";
-import localFont from "next/font/local";
-
-const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
-  weight: "100 900",
-});
-const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-geist-mono",
-  weight: "100 900",
-});
+import { useState, useEffect } from "react";
+import axios from "axios";
+import usePromptStore from "@/lib/store/promptState"; // Import the persisted store
 
 export default function Home() {
-  return (
-    <div
-      className={`${geistSans.variable} ${geistMono.variable} grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]`}
-    >
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              pages/index.js
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const { prompts, responses, addPrompt, addResponse } = usePromptStore();
+  const [inputPrompt, setInputPrompt] = useState("");
+  const [loadingIndex, setLoadingIndex] = useState(null); // Track which response is loading
+  const [isMounted, setIsMounted] = useState(false); // To handle hydration issues
+  const [typingText, setTypingText] = useState(""); // For typing effect
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  // Ensure that we only render after the component is mounted
+  useEffect(() => {
+    setIsMounted(true); // Set isMounted to true once the component is mounted
+  }, []);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!inputPrompt.trim()) return; // Prevent submitting empty prompts
+
+    const promptIndex = prompts.length; // Get the index for the new prompt
+    addPrompt(inputPrompt); // Add the prompt to the state
+
+    setLoadingIndex(promptIndex); // Set loading state for this prompt
+    setTypingText(""); // Reset typing text for new prompt
+
+    try {
+      const res = await axios.post(
+        process.env.NEXT_PUBLIC_API_URL + "/api/prompt",
+        {
+          prompt: inputPrompt,
+        }
+      );
+
+      const fullResponse = res?.data?.message || "No response yet.";
+      simulateTyping(fullResponse, promptIndex); // Trigger typing animation
+    } catch (error) {
+      console.error(error);
+      addResponse("Error: Could not fetch response.", promptIndex);
+      setLoadingIndex(null); // Stop loading if error occurs
+    }
+
+    setInputPrompt(""); // Clear input field after submission
+  };
+
+  // Simulate typing animation
+  const simulateTyping = (text, index) => {
+    let i = 0;
+    const speed = 50; // Adjust speed of typing here
+    const typingInterval = setInterval(() => {
+      setTypingText((prevText) => prevText + text.charAt(i)); // Add character by character
+      i++;
+      if (i === text.length) {
+        clearInterval(typingInterval); // Stop when the full response is typed
+        addResponse(text, index); // Store the full response after typing is finished
+        setLoadingIndex(null); // Clear loading state
+      }
+    }, speed);
+  };
+
+  // Only render the component after it's mounted to prevent hydration errors
+  if (!isMounted) {
+    return null;
+  }
+
+  return (
+    <div className="container mx-auto p-8">
+      <h1 className="text-3xl font-bold mb-6">Dio PT</h1>
+      <div className="max-w-xl mx-auto bg-white shadow-lg rounded-lg p-4">
+        <div className="chat-window mb-6 overflow-y-auto h-96 space-y-4 p-4 border border-gray-300 rounded-md bg-gray-100">
+          {prompts.map((prompt, index) => (
+            <div key={index} className="space-y-2">
+              {/* User Prompt */}
+              <div className="flex justify-end">
+                <div className="bg-blue-500 text-white p-3 rounded-lg max-w-xs">
+                  <p>{prompt}</p>
+                </div>
+              </div>
+              {/* GPT Response */}
+              <div className="flex justify-start">
+                <div className="bg-gray-100 p-3 rounded-lg max-w-xs w-full">
+                  <pre className="bg-gray-800 text-white p-4 rounded-md whitespace-pre-wrap overflow-x-auto">
+                    <code className="font-mono text-sm">
+                      {loadingIndex === index
+                        ? typingText
+                        : responses[index] || "No response yet."}
+                    </code>
+                  </pre>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+
+        <form onSubmit={handleSubmit} className="flex flex-col space-y-4">
+          <textarea
+            id="prompt"
+            name="prompt"
+            rows="3"
+            placeholder="Enter your prompt"
+            value={inputPrompt}
+            onChange={(e) => setInputPrompt(e.target.value)}
+            disabled={loadingIndex !== null} // Disable while waiting for response
+            className="border p-2 rounded w-full"
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          <button
+            type="submit"
+            disabled={loadingIndex !== null} // Disable button while loading
+            className={`bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 ${
+              loadingIndex !== null ? "opacity-50 cursor-not-allowed" : ""
+            }`}
+          >
+            Submit
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
